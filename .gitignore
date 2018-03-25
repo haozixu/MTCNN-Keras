@@ -1,0 +1,20 @@
+# python
+*.py[cod]
+*/__pycache__/
+*.egg
+*.egg-info
+
+# some local files
+*/.settings/
+*/.DS_Store
+.DS_Store
+
+# images
+*.jpg
+*.png
+
+# others
+ignore/*
+.vscode/*
+logs/*
+saved_models/*
