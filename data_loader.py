@@ -190,66 +190,69 @@ def augmented_data_generator(dst_size=12, pos_cnt=10, part_cnt=10, neg_cnt=30, l
                 resized = cv2.resize(cropped, (dst_size, dst_size))
                 images.append(resized)
             
+            try:
+                for box in boxes:
+                    x1, y1, w, h = utils.convert_bbox(box, True)
 
-            for box in boxes:
-                x1, y1, w, h = utils.convert_bbox(box, True)
+                    if max(w, h) < 12: # bounding box too small, discard it
+                        continue
+                    no_proper_faces_found = False
 
-                if max(w, h) < 12: # bounding box too small, discard it
-                    continue
-                no_proper_faces_found = False
+                    if n_pos < pos_cnt or n_part < part_cnt:
+                        crop_box = utils.bbox_positive_sampling(box)
+                        if utils.is_valid_bbox(crop_box, img_size):
+                            iou = utils.IoU(crop_box, boxes)
+                            iou = np.max(iou)
+                            #if observe_flag:
+                            #    print(iou)
+                            if iou >= pos_threshold_low and n_pos < pos_cnt:
+                                n_pos += 1
+                                #cv2.imshow('positive', utils.crop_image(img, crop_box))
+                                append_images_and_bboxes(img, box, crop_box, SampleType.positive)
 
-                if n_pos < pos_cnt or n_part < part_cnt:
-                    crop_box = utils.bbox_positive_sampling(box)
-                    if utils.is_valid_bbox(crop_box, img_size):
-                        iou = utils.IoU(crop_box, boxes)
-                        iou = np.max(iou)
-                        #if observe_flag:
-                        #    print(iou)
-                        if iou >= pos_threshold_low and n_pos < pos_cnt:
-                            n_pos += 1
-                            #cv2.imshow('positive', utils.crop_image(img, crop_box))
-                            append_images_and_bboxes(img, box, crop_box, SampleType.positive)
+                            elif iou >= part_threshold_low and n_part < part_cnt:
+                                n_part += 1
+                                #cv2.imshow('partial', utils.crop_image(img, crop_box))
+                                append_images_and_bboxes(img, box, crop_box, SampleType.partial)
+                    
+                    if n_neg < neg_cnt:
+                        crop_box = utils.bbox_global_negative_sampling(box, img_size, dst_size)
+                        if utils.is_valid_bbox(crop_box, img_size):
+                            iou = utils.IoU(crop_box, boxes)
+                            iou = np.max(iou)
+                            #if observe_flag:
+                            #    print(iou)
+                            if iou < neg_threshold_high:
+                                n_neg += 1
+                                #cv2.imshow('negative', utils.crop_image(img, crop_box))
+                                append_images_and_bboxes(img, box, crop_box, SampleType.negative)
+                    
+                    if n_neg < neg_cnt:
+                        crop_box = utils.bbox_local_negative_sampling(box, dst_size)
+                        if utils.is_valid_bbox(crop_box, img_size):
+                            iou = utils.IoU(crop_box, boxes)
+                            iou = np.max(iou)
+                            #if observe_flag:
+                            #    print(iou)
+                            if iou < neg_threshold_high:
+                                n_neg += 1
+                                append_images_and_bboxes(img, box, crop_box, SampleType.negative)
 
-                        elif iou >= part_threshold_low and n_part < part_cnt:
-                            n_part += 1
-                            #cv2.imshow('partial', utils.crop_image(img, crop_box))
-                            append_images_and_bboxes(img, box, crop_box, SampleType.partial)
-                
-                if n_neg < neg_cnt:
-                    crop_box = utils.bbox_global_negative_sampling(box, img_size, dst_size)
-                    if utils.is_valid_bbox(crop_box, img_size):
-                        iou = utils.IoU(crop_box, boxes)
-                        iou = np.max(iou)
-                        #if observe_flag:
-                        #    print(iou)
-                        if iou < neg_threshold_high:
-                            n_neg += 1
-                            #cv2.imshow('negative', utils.crop_image(img, crop_box))
-                            append_images_and_bboxes(img, box, crop_box, SampleType.negative)
-                
-                if n_neg < neg_cnt:
-                    crop_box = utils.bbox_local_negative_sampling(box, dst_size)
-                    if utils.is_valid_bbox(crop_box, img_size):
-                        iou = utils.IoU(crop_box, boxes)
-                        iou = np.max(iou)
-                        #if observe_flag:
-                        #    print(iou)
-                        if iou < neg_threshold_high:
-                            n_neg += 1
-                            append_images_and_bboxes(img, box, crop_box, SampleType.negative)
+                    loop_cnt += 1
+                    if loop_cnt > loop_threshold * 2:
+                        # we can't handle these bounding boxes, skip
+                        observe_flag = False
+                        no_proper_faces_found = True
+                        break
 
-                loop_cnt += 1
-                if loop_cnt > loop_threshold * 2:
-                    # we can't handle these bounding boxes, skip
-                    observe_flag = False
-                    no_proper_faces_found = True
-                    break
-
-                elif loop_cnt > loop_threshold and not observe_flag:
-                    # adjust IoU threshold
-                    pos_threshold_low = 0.55
-                    neg_threshold_high = 0.4
-                    observe_flag = True
+                    elif loop_cnt > loop_threshold and not observe_flag:
+                        # adjust IoU threshold
+                        pos_threshold_low = 0.55
+                        neg_threshold_high = 0.4
+                        observe_flag = True
+            except:
+                # there might be a few exceptions, try to ignore them?
+                continue
 
             if no_proper_faces_found:
                 break
@@ -265,30 +268,32 @@ def augmented_data_generator(dst_size=12, pos_cnt=10, part_cnt=10, neg_cnt=30, l
 
         n_ldmk = 0
         while n_ldmk < ldmk_cnt:
+            try:
+                box = utils.crop_bbox_for_facial_landmarks(ldmks)
+                if utils.is_valid_bbox(box, img_size):
+                    n_ldmk += 1
 
-            box = utils.crop_bbox_for_facial_landmarks(ldmks)
-            if utils.is_valid_bbox(box, img_size):
-                n_ldmk += 1
+                    angle = np.random.random_integers(-15, 15)
+                    aug_img, ldmks = utils.rotate_facial_landmarks(img, ldmks, box, angle)
+                    aug_img = utils.crop_image(aug_img, box)
+                    aug_img = utils.adjust_hue_and_saturation(aug_img)
+                    aug_img = utils.adjust_lighting_naive(aug_img)
+                    resized = cv2.resize(aug_img, (dst_size, dst_size))
+                    images.append(resized)
 
-                angle = np.random.random_integers(-15, 15)
-                aug_img, ldmks = utils.rotate_facial_landmarks(img, ldmks, box, angle)
-                aug_img = utils.crop_image(aug_img, box)
-                aug_img = utils.adjust_hue_and_saturation(aug_img)
-                aug_img = utils.adjust_lighting_naive(aug_img)
-                resized = cv2.resize(aug_img, (dst_size, dst_size))
-                images.append(resized)
+                    x1, y1, w, h = utils.convert_bbox(box, True)
+                    d_ldmks = []
+                    for x, y in ldmks:
+                        dx = (x - x1) / w
+                        dy = (y - y1) / h
+                        d_ldmks.extend((dx, dy))
 
-                x1, y1, w, h = utils.convert_bbox(box, True)
-                d_ldmks = []
-                for x, y in ldmks:
-                    dx = (x - x1) / w
-                    dy = (y - y1) / h
-                    d_ldmks.extend((dx, dy))
-
-                dummy_cls_bbox = [np.nan] * 4
-                face_cls.append([SampleType.landmark.value, np.nan, np.nan])
-                bbox_reg.append([SampleType.landmark.value] + dummy_cls_bbox)
-                ldmk_reg.append([SampleType.landmark.value] + d_ldmks)
+                    dummy_cls_bbox = [np.nan] * 4
+                    face_cls.append([SampleType.landmark.value, np.nan, np.nan])
+                    bbox_reg.append([SampleType.landmark.value] + dummy_cls_bbox)
+                    ldmk_reg.append([SampleType.landmark.value] + d_ldmks)
+            except:
+                continue
 
         if double_aug:
             aug_fn = lambda im: utils.adjust_lighting_naive(utils.adjust_hue_and_saturation(im))

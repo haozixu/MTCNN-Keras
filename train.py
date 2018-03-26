@@ -133,7 +133,7 @@ if __name__ == '__main__':
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
     
-    model = models.R_Net()
+    model = models.P_Net_alter1()
     
     loss_dict = {'face_cls': face_cls_loss, 'bbox_reg': bbox_reg_mse_loss, 'ldmk_reg': ldmk_reg_mse_loss}
     metrics_dict = {'face_cls': [recall, accuracy]}
@@ -142,19 +142,23 @@ if __name__ == '__main__':
 
     sgd = keras.optimizers.SGD(lr=1e-3, momentum=0.9)
     adam = keras.optimizers.Adam()
-    model.compile(optimizer=adam, loss=loss_dict, loss_weights=loss_weights, metrics=metrics_dict)
+    model.compile(optimizer=sgd, loss=loss_dict, loss_weights=loss_weights, metrics=metrics_dict)
 
 #    model.summary()
-#    exit()
 
-    weights_file = 'RNet-000.h5'
-    logs_file = 'RNet-train.csv'
+    weights_file = 'PNet-alter1-000.h5'
+    logs_file = 'PNet-alter1-train.csv'
     csv_logger = keras.callbacks.CSVLogger(os.path.join(log_dir, logs_file))
-    datagen = data_loader.augmented_data_generator(dst_size=24, double_aug=True)
+    datagen = data_loader.augmented_data_generator(dst_size=12, double_aug=False)
+
+    weights_path = os.path.join(save_dir, weights_file)
+    if os.path.exists(weights_path):
+        model.load_weights(weights_path)
+
     try:
-        model.fit_generator(datagen, steps_per_epoch=1000, epochs=3, 
+        model.fit_generator(datagen, steps_per_epoch=1000, epochs=100, 
             workers=4, use_multiprocessing=True, shuffle=True, callbacks=[csv_logger])
     except KeyboardInterrupt:
         print('ctrl-c received!')
     finally:
-        model.save_weights(os.path.join(save_dir, weights_file))
+        model.save_weights(weights_path)

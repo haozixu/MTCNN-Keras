@@ -289,7 +289,7 @@ if __name__ == '__main__':
     #print(boxes)
     #boxes = convert_to_square_bbox(boxes)
     #print(boxes)
-    img = cv2.imread('000001.jpg')
+    img = cv2.imread('001.jpg')
     ldmks = np.array([(69, 109), (106, 113), (77, 142), (73, 152), (108, 154)])
     #box = generate_bbox_from_landmarks(img, ldmks)
     #x1, y1, x2, y2 = box
