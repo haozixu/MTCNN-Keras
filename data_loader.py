@@ -19,7 +19,7 @@ celeba_annos_file = 'list_landmarks_align_celeba.txt'
 DataState = Enum('DataState', ('stop', 'next'))
 
 def widerface_data_loader(images_dir=widerface_images_dir,
-    annos_dir=widerface_annos_dir, annos_file=widerface_annos_file):
+    annos_dir=widerface_annos_dir, annos_file=widerface_annos_file, skip=0):
     """
         generator function
 
@@ -34,10 +34,17 @@ def widerface_data_loader(images_dir=widerface_images_dir,
         while idx < n_lines:
             image_name = lines[idx].strip()
             assert '/' in image_name
+            n_faces = int(lines[idx + 1])
+
+            if skip > 0:
+                idx += 1 + n_faces + 1
+                if skip % 1000 == 0:
+                    print('[WIDER FACE loader]: skipping. %d remaining.' %(skip))
+                skip -= 1
+                continue
+
             image_path = os.path.join(images_dir, image_name)
             image = cv2.imread(image_path)
-
-            n_faces = int(lines[idx + 1])
             bboxes = []
             for i in range(n_faces):
                 anno = lines[idx + 2 + i].strip().split()
@@ -45,16 +52,16 @@ def widerface_data_loader(images_dir=widerface_images_dir,
                 x1, y1, w, h = anno[0], anno[1], anno[2], anno[3]
                 box = utils.convert_bbox((x1, y1, w, h), False)
                 bboxes.append(box)
-        
+            
             response = yield image, bboxes, image_path
             if response == DataState.stop:
                 return
-
+            
             idx += 1 + n_faces + 1
 
 
 def celeba_data_loader(images_dir=celeba_images_dir,
-    annos_dir=celeba_annos_dir, annos_file=celeba_annos_file):
+    annos_dir=celeba_annos_dir, annos_file=celeba_annos_file, skip=0):
     """
         generator function
 
@@ -68,6 +75,14 @@ def celeba_data_loader(images_dir=celeba_images_dir,
         idx = 2 # we start from the third line
         while idx < n_lines:
             line = lines[idx].strip().split()
+            idx += 1
+
+            if skip > 0:
+                if skip % 1000 == 0:
+                    print('[CelebA loader]: skipping. %d remaining.' %(skip))
+                skip -= 1
+                continue
+
             image_name = line[0]
             image_path = os.path.join(images_dir, image_name)
             image = cv2.imread(image_path)
@@ -78,8 +93,6 @@ def celeba_data_loader(images_dir=celeba_images_dir,
             response = yield image, landmarks, image_path
             if response == DataState.stop:
                 return
-        
-            idx += 1
 
 
 class SampleType(Enum):
@@ -89,7 +102,7 @@ class SampleType(Enum):
     landmark = 3
 
 
-def augmented_data_generator(dst_size=12, pos_cnt=10, part_cnt=10, neg_cnt=30, ldmk_cnt=20, double_aug=True):
+def augmented_data_generator(**kwargs):
     """
         training data generator for MTCNN
 
@@ -99,10 +112,18 @@ def augmented_data_generator(dst_size=12, pos_cnt=10, part_cnt=10, neg_cnt=30, l
         @param neg_cnt: expected count of negative samples in a batch
         @param ldmk_cnt: expected count of landmark samples in a batch
         @param double_aug: if set to True, the size of batches will double (using image augmentaion)
+        @param skip: if nonzero, given number of images will be skipped (default zero)
 
         according to the paper, pos_cnt : part_cnt : neg_cnt : ldmk_cnt should be 1 : 1 : 3 : 2
 
     """
+    dst_size = kwargs['dst_size'] if kwargs.get('dst_size') else 12
+    pos_cnt = kwargs['pos_cnt'] if kwargs.get('pos_cnt') else 10
+    part_cnt = kwargs['part_cnt'] if kwargs.get('part_cnt') else 10
+    neg_cnt = kwargs['neg_cnt'] if kwargs.get('neg_cnt') else 30
+    ldmk_cnt = kwargs['ldmk_cnt'] if kwargs.get('ldmk_cnt') else 20
+    double_aug = kwargs['double_aug'] if kwargs.get('double_aug') else False
+    skip = kwargs['skip'] if kwargs.get('skip') else 0
     """
         record data format: [ type, cls_0, cls1] [ type, bbox1, ..., bbox4] [ type, ldmk1, ... ldmk10 ]
 
@@ -140,8 +161,8 @@ def augmented_data_generator(dst_size=12, pos_cnt=10, part_cnt=10, neg_cnt=30, l
     #neg_threshold_high = 0.3
     #part_threshold_low = 0.4
 
-    widerface_loader = widerface_data_loader()
-    celeba_loader = celeba_data_loader()
+    widerface_loader = widerface_data_loader(skip=skip)
+    celeba_loader = celeba_data_loader(skip=skip)
 
     loop_threshold = (pos_cnt + part_cnt + neg_cnt) * 10
 
@@ -151,7 +172,7 @@ def augmented_data_generator(dst_size=12, pos_cnt=10, part_cnt=10, neg_cnt=30, l
 
         # process images from WIDER FACE dataset
 
-        img, boxes, path = widerface_loader.send(None)
+        img, boxes, _ = widerface_loader.send(None)
         h_img, w_img, _ = img.shape
         img_size = (w_img, h_img)
         boxes = np.array(boxes)
@@ -262,7 +283,7 @@ def augmented_data_generator(dst_size=12, pos_cnt=10, part_cnt=10, neg_cnt=30, l
         
         # process images from CelebA dataset
 
-        img, ldmks, path = celeba_loader.send(None)
+        img, ldmks, _ = celeba_loader.send(None)
         h_img, w_img, _ = img.shape
         img_size = (h_img, w_img)
 

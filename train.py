@@ -1,5 +1,6 @@
 import argparse
 import os
+import time
 
 import keras
 import tensorflow as tf
@@ -124,41 +125,78 @@ def f1_score(y_true, y_pred):
     return 2 * precision * recall / (precision + recall)
 
 
-if __name__ == '__main__':
-    save_dir = 'saved_models'
-    log_dir = 'logs'
+def train(model, weight_to_save, logs_to_save, pretrained_weights, **kwargs):
+    # training configuration and paths
+    save_dir = kwargs['save_dir'] if kwargs.get('save_dir') else 'saved_models'
+    log_dir = kwargs['log_dir'] if kwargs.get('log_dir') else 'logs'
 
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
     
-    model = models.P_Net_alter1()
+    if pretrained_weights:
+        if os.path.exists(pretrained_weights):
+            model.load_weights(pretrained_weights)
+        elif os.path.exists(os.path.join(save_dir, pretrained_weights)):
+            model.load_weights(os.path.join(save_dir, pretrained_weights))
     
-    loss_dict = {'face_cls': face_cls_loss, 'bbox_reg': bbox_reg_mse_loss, 'ldmk_reg': ldmk_reg_mse_loss}
-    metrics_dict = {'face_cls': [recall, accuracy]}
+    weights_path = os.path.join(save_dir, weight_to_save)
+    
+    # model compilation
+    optimizer = kwargs['optimizer']
+    loss = kwargs['loss']
+    metrics = kwargs['metrics']
+    loss_weights = kwargs['loss_weights']
 
-    loss_weights = {'face_cls': 1.0, 'bbox_reg': 0.5, 'ldmk_reg': 0.5}
+    model.compile(optimizer=optimizer, loss=loss, loss_weights=loss_weights, metrics=metrics)
 
-    sgd = keras.optimizers.SGD(lr=1e-3, momentum=0.9)
-    adam = keras.optimizers.Adam()
-    model.compile(optimizer=sgd, loss=loss_dict, loss_weights=loss_weights, metrics=metrics_dict)
+    # prepare callbacks
+    csv_logger = keras.callbacks.CSVLogger(os.path.join(log_dir, logs_to_save))
+    callbacks = [csv_logger]
+    if kwargs.get('callbacks'):
+        callbacks.extend(kwargs['callbacks'])
+    
+    # configure multiprocessing and epochs
+    use_multiprocessing = kwargs['use_multiprocessing'] if kwargs.get('use_multiprocessing') else False
+    workers = kwargs['workers'] if kwargs.get('workers') else 1
 
-#    model.summary()
+    epochs = kwargs['epochs'] if kwargs.get('epochs') else 1
+    steps_per_epoch = kwargs['steps_per_epoch'] if kwargs.get('steps_per_epoch') else 1000
+    initial_epoch = kwargs['initial_epoch'] if kwargs.get('initial_epoch') else 0
+    if initial_epoch:
+        kwargs['skip'] = initial_epoch * steps_per_epoch
 
-    weights_file = 'PNet-alter1-000.h5'
-    logs_file = 'PNet-alter1-train.csv'
-    csv_logger = keras.callbacks.CSVLogger(os.path.join(log_dir, logs_file))
-    datagen = data_loader.augmented_data_generator(dst_size=12, double_aug=False)
+    # data generator
+    datagen = data_loader.augmented_data_generator(**kwargs)
 
-    weights_path = os.path.join(save_dir, weights_file)
-    if os.path.exists(weights_path):
-        model.load_weights(weights_path)
-
+    # training
+    start_time = time.time()
     try:
-        model.fit_generator(datagen, steps_per_epoch=1000, epochs=100, 
-            workers=4, use_multiprocessing=True, shuffle=True, callbacks=[csv_logger])
+        model.fit_generator(datagen, steps_per_epoch=steps_per_epoch, epochs=epochs,
+            use_multiprocessing=use_multiprocessing, workers=workers,
+            callbacks=callbacks, shuffle=True)
     except KeyboardInterrupt:
-        print('ctrl-c received!')
+        print('Keyboard Interrupt received. stop training.')
     finally:
+        # save weights
         model.save_weights(weights_path)
+        print('model weights saved at %s.' %(weights_path))
+
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print('training finished. time: %d h %d m %g s'
+            %(elapsed_time // 3600, (elapsed_time % 3600) // 60, elapsed_time % 60))
+
+
+if __name__ == '__main__':
+    PNet = models.P_Net_alter1()
+    sgd = keras.optimizers.SGD(lr=1e-4, momentum=0.9)
+    loss_PNet = {'face_cls': face_cls_loss, 'bbox_reg': bbox_reg_mse_loss, 'ldmk_reg': ldmk_reg_mse_loss}
+    metrics_PNet = {'face_cls': [recall, accuracy]}
+    loss_weights_PNet = {'face_cls': 1.0, 'bbox_reg': 0.5, 'ldmk_reg': 0.5}
+
+    train(PNet, 'PNet-alter1-999.h5', 'PNet-alter1-train-999.csv', 'PNet-alter1-001.h5',
+        optimizer=sgd, loss=loss_PNet, loss_weights=loss_weights_PNet, metrics=metrics_PNet,
+        initial_epoch=100, epochs=1, use_multiprocessing=True, workers=4, dst_size=12)
+    
