@@ -9,7 +9,7 @@ from keras import backend as K
 SampleLabelFilter = Lambda(lambda x: x[..., 1:])
 
 
-def P_Net_conv(x, channels):
+def PNet_conv(x, channels):
     k1, k2, k3 = channels
 
     x = Conv2D(k1, (3, 3), strides=1, padding='valid', name='conv1')(x)
@@ -25,7 +25,7 @@ def P_Net_conv(x, channels):
     return x
 
 
-def P_Net_output(x, training):
+def PNet_output(x, training):
     if training:
         face_cls = Conv2D(3, (1, 1), name='face_cls_conv')(x)
         bbox_reg = Conv2D(5, (1, 1), name='bbox_reg_conv')(x)
@@ -46,7 +46,7 @@ def P_Net_output(x, training):
     return face_cls, bbox_reg, ldmk_reg
 
 
-def RO_Net_output(x, training):
+def RONet_output(x, training):
     face_cls = Dense(3, name='face_cls')(x)
     bbox_reg = Dense(5, name='bbox_reg')(x)
     ldmk_reg = Dense(11, name='ldmk_reg')(x)
@@ -58,16 +58,16 @@ def RO_Net_output(x, training):
     return face_cls, bbox_reg, ldmk_reg
 
 
-def P_Net(training=True):
+def PNet(training=True):
     inp = Input((None, None, 3))
     
-    x = P_Net_conv(inp, (10, 16, 32))
-    face_cls, bbox_reg, ldmk_reg = P_Net_output(x, training)
+    x = PNet_conv(inp, (10, 16, 32))
+    face_cls, bbox_reg, ldmk_reg = PNet_output(x, training)
     
     return Model(inp, [face_cls, bbox_reg, ldmk_reg])
     
 
-def R_Net(training=True):
+def RNet(training=True):
     inp = Input((24, 24, 3))
     
     x = Conv2D(28, (3, 3), strides=1, padding='same', name='conv1')(inp)
@@ -85,11 +85,11 @@ def R_Net(training=True):
     x = Dense(128)(x)
     x = PReLU(name='prelu4')(x)
     
-    face_cls, bbox_reg, ldmk_reg = RO_Net_output(x, training)
+    face_cls, bbox_reg, ldmk_reg = RONet_output(x, training)
     
     return Model(inp, [face_cls, bbox_reg, ldmk_reg])
 
-def O_Net(training=True):
+def ONet(training=True):
     inp = Input((48, 48, 3))
     
     x = Conv2D(32, (3, 3), strides=1, padding='same', name='conv1')(inp)
@@ -111,26 +111,25 @@ def O_Net(training=True):
     x = Dense(256)(x)
     x = PReLU(name='prelu5')(x)
     
-    face_cls, bbox_reg, ldmk_reg = RO_Net_output(x, training)
+    face_cls, bbox_reg, ldmk_reg = RONet_output(x, training)
     
     return Model(inp, [face_cls, bbox_reg, ldmk_reg])
     
 
-def P_Net_alter1(training=True):
+def PNet_alter1(training=True):
     inp = Input((None, None, 3))
-    x = P_Net_conv(inp, (16, 32, 64)) #recall: 80%
-    face_cls, bbox_reg, ldmk_reg = P_Net_output(x, training)
+    x = PNet_conv(inp, (16, 32, 64))
+    face_cls, bbox_reg, ldmk_reg = PNet_output(x, training)
     return Model(inp, [face_cls, bbox_reg, ldmk_reg])
 
 
-def P_Net_alter2(training=True):
+def PNet_alter2(training=True):
     inp = Input((None, None, 3))
-    x = P_Net_conv(inp, (24, 36, 48))
-    face_cls, bbox_reg, ldmk_reg = P_Net_output(x, training)
+    x = PNet_conv(inp, (24, 36, 48))
+    face_cls, bbox_reg, ldmk_reg = PNet_output(x, training)
     return Model(inp, [face_cls, bbox_reg, ldmk_reg])
-
 
 
 if __name__ == '__main__':
-    model = P_Net_alter1()
+    model = PNet_alter1()
     model.summary()

@@ -282,6 +282,13 @@ def normalize_image(img):
     return (img - 127.5) / 128
 
 
+def scale_image(img, scale):
+    h, w, _ = img.shape
+    h_new = int(np.ceil(h * scale))
+    w_new = int(np.ceil(w * scale))
+    return cv2.resize(img, (w_new, h_new))
+
+
 if __name__ == '__main__':
     #box = np.random.random_integers(0, 100, size=(4,))
     #boxes = np.random.random_integers(0, 100, size=(10, 4))

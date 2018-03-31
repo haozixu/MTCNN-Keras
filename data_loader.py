@@ -18,13 +18,18 @@ celeba_annos_file = 'list_landmarks_align_celeba.txt'
 
 DataState = Enum('DataState', ('stop', 'next'))
 
-def widerface_data_loader(images_dir=widerface_images_dir,
-    annos_dir=widerface_annos_dir, annos_file=widerface_annos_file, skip=0):
+def widerface_data_loader(skip=0, **kwargs):
     """
         generator function
 
         load data from WIDER FACE dataset
+
+        params from kwargs: widerface_images_dir, widerface_annos_dir, widerface_annos_file 
     """
+    images_dir = kwargs.get('widerface_images_dir', widerface_images_dir)
+    annos_dir = kwargs.get('widerface_annos_dir', widerface_annos_dir)
+    annos_file = kwargs.get('widerface_annos_file', widerface_annos_file)
+
     annos_path = os.path.join(annos_dir, annos_file)
     lines = linecache.getlines(annos_path)
     n_lines = len(lines)
@@ -38,7 +43,7 @@ def widerface_data_loader(images_dir=widerface_images_dir,
 
             if skip > 0:
                 idx += 1 + n_faces + 1
-                if skip % 1000 == 0:
+                if skip % 5000 == 0:
                     print('[WIDER FACE loader]: skipping. %d remaining.' %(skip))
                 skip -= 1
                 continue
@@ -60,13 +65,18 @@ def widerface_data_loader(images_dir=widerface_images_dir,
             idx += 1 + n_faces + 1
 
 
-def celeba_data_loader(images_dir=celeba_images_dir,
-    annos_dir=celeba_annos_dir, annos_file=celeba_annos_file, skip=0):
+def celeba_data_loader(skip=0, **kwargs):
     """
         generator function
 
         load data from CelebA dataset
+
+        params from kwargs: celeba_images_dir, celeba_annos_dir, celeba_annos_file 
     """
+    images_dir = kwargs.get('celeba_images_dir', celeba_images_dir)
+    annos_dir = kwargs.get('celeba_annos_dir', celeba_annos_dir)
+    annos_file = kwargs.get('celeba_annos_file', celeba_annos_file)
+
     annos_path = os.path.join(annos_dir, annos_file)
     lines = linecache.getlines(annos_path)
     n_lines = len(lines)
@@ -78,7 +88,7 @@ def celeba_data_loader(images_dir=celeba_images_dir,
             idx += 1
 
             if skip > 0:
-                if skip % 1000 == 0:
+                if skip % 5000 == 0:
                     print('[CelebA loader]: skipping. %d remaining.' %(skip))
                 skip -= 1
                 continue
@@ -113,19 +123,22 @@ def augmented_data_generator(**kwargs):
         @param ldmk_cnt: expected count of landmark samples in a batch
         @param double_aug: if set to True, the size of batches will double (using image augmentaion)
         @param skip: if nonzero, given number of images will be skipped (default zero)
+        @param min_face: minimum face size
 
         according to the paper, pos_cnt : part_cnt : neg_cnt : ldmk_cnt should be 1 : 1 : 3 : 2
 
     """
-    dst_size = kwargs['dst_size'] if kwargs.get('dst_size') else 12
-    pos_cnt = kwargs['pos_cnt'] if kwargs.get('pos_cnt') else 10
-    part_cnt = kwargs['part_cnt'] if kwargs.get('part_cnt') else 10
-    neg_cnt = kwargs['neg_cnt'] if kwargs.get('neg_cnt') else 30
-    ldmk_cnt = kwargs['ldmk_cnt'] if kwargs.get('ldmk_cnt') else 20
-    double_aug = kwargs['double_aug'] if kwargs.get('double_aug') else False
-    skip = kwargs['skip'] if kwargs.get('skip') else 0
+    dst_size = kwargs.get('dst_size', 12)
+    pos_cnt = kwargs.get('pos_cnt', 10)
+    part_cnt = kwargs.get('part_cnt', 10)
+    neg_cnt = kwargs.get('neg_cnt', 30)
+    ldmk_cnt = kwargs.get('ldmk_cnt', 20)
+    double_aug = kwargs.get('double_aug', False)
+    skip = kwargs.get('skip', 0)
+    min_face = kwargs.get('min_face', 12)
     """
-        record data format: [ type, cls_0, cls1] [ type, bbox1, ..., bbox4] [ type, ldmk1, ... ldmk10 ]
+        record data format: 
+        [ type, cls_0, cls1] [ type, bbox1, ..., bbox4 ] [ type, ldmk1, ... ldmk10 ]
 
         for positivie samples:
             type = SampleType.positive.value
@@ -215,7 +228,7 @@ def augmented_data_generator(**kwargs):
                 for box in boxes:
                     x1, y1, w, h = utils.convert_bbox(box, True)
 
-                    if max(w, h) < 12: # bounding box too small, discard it
+                    if max(w, h) < min_face: # bounding box too small, discard it
                         continue
                     no_proper_faces_found = False
 
@@ -323,7 +336,7 @@ def augmented_data_generator(**kwargs):
             bbox_reg.extend(bbox_reg)
             ldmk_reg.extend(ldmk_reg)
 
-        # handle shuffle ?
+        # do shuffle ? (we may left that to .fit_generator)
         images = list(map(utils.normalize_image, images))
         yield np.array(images), {
             'face_cls': np.array(face_cls),
@@ -335,11 +348,11 @@ def augmented_data_generator(**kwargs):
         #print('batch %d' %(batch))
 
 
-def load_and_display_widerface(max_count=10):
+def load_and_display_widerface(max_count=10, skip=0):
     """
         show annotated images from WIDER FACE
     """
-    loader = widerface_data_loader()
+    loader = widerface_data_loader(skip=skip)
 
     count = 0
     for img, bboxes, path in loader:
@@ -353,11 +366,11 @@ def load_and_display_widerface(max_count=10):
             loader.send(DataState.stop)
 
 
-def load_and_display_celeba(max_count=10):
+def load_and_display_celeba(max_count=10, skip=0):
     """
         show annotated facial landmarks from CelebA
     """
-    loader = celeba_data_loader()
+    loader = celeba_data_loader(skip=skip)
 
     count = 0
     for img, landmarks, path in loader:
